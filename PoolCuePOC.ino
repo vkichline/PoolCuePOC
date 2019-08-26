@@ -42,6 +42,7 @@
 #define     DISPLAY_MODE_REAL 3
 #define     DISPLAY_MODE_WOR  4
 #define     DISPLAY_MODE_TPT  5
+#define     DISPLAY_MAX_ROT   DISPLAY_MODE_WOR
 
 
 MPU6050           mpu(0x68);
@@ -67,7 +68,7 @@ void initDisplay() {
   display.setTextSize(1);
   display.setCursor(0, 0);
   display.setTextColor(WHITE);
-  display.println(F("Starting."));
+  display.println(F("Starting.."));
   display.display();
   Serial.println(F("Display initialized."));
 }
@@ -175,28 +176,12 @@ void displayYawPitchRoll(uint8_t* fifoBuffer) {
   mpu.dmpGetGravity(&gravity, &q);
   mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
   
-  Serial.print("ypr\t");
-  Serial.print(ypr[0] * 180 / M_PI);
-  Serial.print("\t");
-  Serial.print(ypr[1] * 180 / M_PI);
-  Serial.print("\t");
-  Serial.println(ypr[2] * 180 / M_PI);
-
-  char buffer[32];
   display.clearDisplay();
   display.setCursor(0,0);
-//  display.print("Yaw:   ");
-//  itoa(ypr[0] * 180 / M_PI, buffer, 10);
-//  display.println(buffer);
-//  display.print("Pitch: ");
-//  itoa(ypr[1] * 180 / M_PI, buffer, 10);
-//  display.println(buffer);
-//  display.print("Roll:  ");
-//  itoa(ypr[2] * 180 / M_PI, buffer, 10);
-//  display.println(buffer);
-  display.printf("Yaw %6.1f\n", ypr[0] * 180.0 / M_PI);
-  display.printf("Pit %6.1f\n", ypr[1] * 180.0 / M_PI);
-  display.printf("Rol %6.1f\n", ypr[2] * 180.0 / M_PI);
+  display.printf(F("   Y/P/R\n\n"));
+  display.printf(F("Yaw %6.1f\n"), ypr[0] * 180.0 / M_PI);
+  display.printf(F("Pit %6.1f\n"), ypr[1] * 180.0 / M_PI);
+  display.printf(F("Rol %6.1f\n"), ypr[2] * 180.0 / M_PI);
   display.display();
 }
 
@@ -209,14 +194,14 @@ void displayQuaternion(uint8_t* fifoBuffer) {
 
   mpu.dmpGetQuaternion(&q, fifoBuffer);
   
-  Serial.print("quat\t");
-  Serial.print(q.w);
-  Serial.print("\t");
-  Serial.print(q.x);
-  Serial.print("\t");
-  Serial.print(q.y);
-  Serial.print("\t");
-  Serial.println(q.z);
+  display.clearDisplay();
+  display.setCursor(0,0);
+  display.printf(F("Quaternion\n\n"));
+  display.printf(F("w %7.4f\n"), q.w);
+  display.printf(F("x %7.4f\n"), q.x);
+  display.printf(F("y %7.4f\n"), q.y);
+  display.printf(F("z %7.4f\n"), q.z);
+  display.display();
 }
 
 
@@ -231,12 +216,13 @@ void displayEuler(uint8_t* fifoBuffer) {
   mpu.dmpGetQuaternion(&q, fifoBuffer);
   mpu.dmpGetEuler(euler, &q);
   
-  Serial.print("euler\t");
-  Serial.print(euler[0] * 180 / M_PI);
-  Serial.print("\t");
-  Serial.print(euler[1] * 180 / M_PI);
-  Serial.print("\t");
-  Serial.println(euler[2] * 180 / M_PI);
+  display.clearDisplay();
+  display.setCursor(0,0);
+  display.printf(F("   Euler\n\n"));
+  display.printf(F("x %7.4f\n"), euler[0] * 180.0 / M_PI);
+  display.printf(F("y %7.4f\n"), euler[1] * 180.0 / M_PI);
+  display.printf(F("z %7.4f\n"), euler[2] * 180.0 / M_PI);
+  display.display();
 }
 
 
@@ -250,18 +236,24 @@ void displayRealAccel(uint8_t* fifoBuffer) {
   VectorInt16 aa;      // [x, y, z]    accel sensor measurements
   VectorFloat gravity; // [x, y, z]    gravity vector
   VectorInt16 aaReal;  // [x, y, z]    gravity-free accel sensor measurements
+  static int maxX, maxY, maxZ = 0;
 
   mpu.dmpGetQuaternion(&q, fifoBuffer);
   mpu.dmpGetAccel(&aa, fifoBuffer);
   mpu.dmpGetGravity(&gravity, &q);
   mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
   
-  Serial.print("areal\t");
-  Serial.print(aaReal.x);
-  Serial.print("\t");
-  Serial.print(aaReal.y);
-  Serial.print("\t");
-  Serial.println(aaReal.z);
+  if(aaReal.x > maxX)  maxX = aaReal.x;
+  if(aaReal.x > maxY)  maxY = aaReal.y;
+  if(aaReal.x > maxZ)  maxZ = aaReal.z;
+  
+  display.clearDisplay();
+  display.setCursor(0,0);
+  display.printf(F("RealAccel (x, y, z)\n\n"));
+  display.printf(F("%4d %5d\n"), aaReal.x, maxX);
+  display.printf(F("%4d %5d\n"), aaReal.y, maxY);
+  display.printf(F("%4d %5d\n"), aaReal.z, maxZ);
+  display.display();
 }
 
 
@@ -275,6 +267,7 @@ void displayWorld(uint8_t* fifoBuffer) {
   VectorFloat gravity; // [x, y, z]    gravity vector
   VectorInt16 aaReal;  // [x, y, z]    gravity-free accel sensor measurements
   VectorInt16 aaWorld; // [x, y, z]    world-frame accel sensor measurements
+  static int maxX, maxY, maxZ = 0;
 
   mpu.dmpGetQuaternion(&q, fifoBuffer);
   mpu.dmpGetAccel(&aa, fifoBuffer);
@@ -282,12 +275,17 @@ void displayWorld(uint8_t* fifoBuffer) {
   mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
   mpu.dmpGetLinearAccelInWorld(&aaWorld, &aaReal, &q);
   
-  Serial.print("aworld\t");
-  Serial.print(aaWorld.x);
-  Serial.print("\t");
-  Serial.print(aaWorld.y);
-  Serial.print("\t");
-  Serial.println(aaWorld.z);
+  if(aaWorld.x > maxX)  maxX = aaWorld.x;
+  if(aaWorld.x > maxY)  maxY = aaWorld.y;
+  if(aaWorld.x > maxZ)  maxZ = aaWorld.z;
+
+  display.clearDisplay();
+  display.setCursor(0,0);
+  display.printf(F("WorldAccel(x, y, z)\n\n"));
+  display.printf(F("%4d %5d\n"), aaWorld.x, maxX);
+  display.printf(F("%4d %5d\n"), aaWorld.y, maxY);
+  display.printf(F("%4d %5d\n"), aaWorld.z, maxZ);
+  display.display();
 }
 
 
@@ -327,16 +325,8 @@ void displayModeError() {
 //
 void loop()
 {
-  uint8_t     mpuIntStatus;              // holds actual interrupt status byte from MPU
-  uint8_t     fifoBuffer[64];            // FIFO storage buffer
-
-  Quaternion q;        // [w, x, y, z]         quaternion container
-  VectorInt16 aa;      // [x, y, z]            accel sensor measurements
-  VectorInt16 aaReal;  // [x, y, z]            gravity-free accel sensor measurements
-  VectorInt16 aaWorld; // [x, y, z]            world-frame accel sensor measurements
-  VectorFloat gravity; // [x, y, z]            gravity vector
-  float euler[3];      // [psi, theta, phi]    Euler angle container
-  float ypr[3];        // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
+  uint8_t     mpuIntStatus;   // holds actual interrupt status byte from MPU
+  uint8_t     fifoBuffer[64]; // FIFO storage buffer
 
   // if programming failed, don't try to do anything
   if (!dmpReady)
@@ -355,6 +345,20 @@ void loop()
     // stuff to see if mpuInterrupt is true, and if so, "break;" from the
     // while() loop to immediately process the MPU data
     yield();
+  }
+
+  // Test Button A for display mode changes
+  if(!digitalRead(BUTTON_A)) {
+    // Button A is pressed.  Debounce, and wait for button to be released.
+    Serial.println(F("Button A pressed."));
+    delay(10);
+    while(!digitalRead(BUTTON_A)) {
+      delay(1);
+    }
+    // Advance displayMode by one.  If past max, wrap around to zero.
+    displayMode++;
+    if(displayMode > DISPLAY_MAX_ROT) displayMode = 0;
+    Serial.printf(F("Dislay mode set to %d\n"), displayMode);
   }
 
   // reset interrupt flag and get INT_STATUS byte
