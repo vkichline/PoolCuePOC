@@ -219,9 +219,9 @@ void displayEuler(uint8_t* fifoBuffer) {
   display.clearDisplay();
   display.setCursor(0,0);
   display.printf(F("   Euler\n\n"));
-  display.printf(F("x %7.4f\n"), euler[0] * 180.0 / M_PI);
-  display.printf(F("y %7.4f\n"), euler[1] * 180.0 / M_PI);
-  display.printf(F("z %7.4f\n"), euler[2] * 180.0 / M_PI);
+  display.printf(F("x %8.3f\n"), euler[0] * 180.0 / M_PI);
+  display.printf(F("y %8.3f\n"), euler[1] * 180.0 / M_PI);
+  display.printf(F("z %8.3f\n"), euler[2] * 180.0 / M_PI);
   display.display();
 }
 
