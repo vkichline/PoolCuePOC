@@ -1,13 +1,20 @@
-//  Pool Cue One
+//  Pool Cue Proof of Concept
 //  Van Kichline
 //  August 2019
 //  Adapdted from https://github.com/jrowberg/i2cdevlib/tree/master/Arduino/MPU6050/examples/MPU6050_DMP6
 //  Using the I2Cdev libraries: https://www.i2cdevlib.com/
 //  Modified for ESP8266, implemented on:
-//    Wemos D1 Mini
+//    Wemos OLED shield (optional) 64×48 pixels (0.66” Across)
 //    Proto shield with GY-521, interrup = D8.
-//    Wemos OLED shield
+//    Wemos D1 Mini
 //    Wemos Battery board
+//
+//  Plan:
+//    Create Access Point (APP_NAME)
+//    Create captive DNS website
+//    Utilize WebSocket server for data updates
+//    Display YPR, tap, stroke, impact, 3d graph, etc.
+//
 //
 //   NOTE: In addition to connection 3.3v, GND, SDA, and SCL, this sketch
 //   depends on the MPU-6050's INT pin being connected to the D1 Mini's
@@ -18,11 +25,14 @@
 //OFFSETS    -1286,    -379,    1410,      40,     -64,      44
 
 #include <I2Cdev.h>
+#include <SPI.h>
 #include <Wire.h>
-#include "SSD1306Wire.h"
+#include <Adafruit_GFX.h>
+#include "Adafruit_SSD1306.h"
 #include "MPU6050_6Axis_MotionApps20.h" // includes MPU6050.h
 
 
+#define     OLED_RESET        -1
 #define     INTERRUPT_PIN     D8
 #define     BUTTON_A          D3
 #define     BUTTON_B          D4
@@ -34,13 +44,13 @@
 #define     DISPLAY_MODE_TPT  5
 
 
-MPU6050     mpu(0x68);
-SSD1306Wire display(0x3C, D2, D1);        // Wemos OLED shield
-bool        dmpReady          = false;    // set true if DMP init was successful
-uint16_t    fifoCount         = 0;        // count of all bytes currently in FIFO
-uint16_t    packetSize        = 42;       // expected DMP packet size (default is 42 bytes)
-int         displayMode       = DISPLAY_MODE_YPR;
-uint8_t     teapotPacket[14]  = {'$', 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0x00, 0x00, '\r', '\n'}; // packet structure for InvenSense teapot demo
+MPU6050           mpu(0x68);
+Adafruit_SSD1306  display(OLED_RESET);        // Wemos OLED shield
+bool              dmpReady          = false;  // set true if DMP init was successful
+uint16_t          fifoCount         = 0;      // count of all bytes currently in FIFO
+uint16_t          packetSize        = 42;     // expected DMP packet size (default is 42 bytes)
+int               displayMode       = DISPLAY_MODE_YPR;
+uint8_t           teapotPacket[14]  = {'$', 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0x00, 0x00, '\r', '\n'}; // packet structure for InvenSense teapot demo
 
 
 //  Interrupt Routine and status var
@@ -52,10 +62,12 @@ ICACHE_RAM_ATTR void dmpDataReady() { mpuInterrupt = true; }
 //  Start up the OLED and display initial message
 //
 void initDisplay() {
-  display.init();
-  display.flipScreenVertically();
-  display.setFont(ArialMT_Plain_10);
-  display.drawString(32, 14, "Starting.");
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x3C (for the 64x48)
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.setTextColor(WHITE);
+  display.println(F("Starting."));
   display.display();
   Serial.println(F("Display initialized."));
 }
@@ -64,8 +76,8 @@ void initDisplay() {
 //  Initialize and calibrate GY-521
 //
 void initMPU() {
-  uint8_t devStatus;        // return status after each device operation (0 = success, !0 = error)
-  uint8_t   mpuIntStatus;   // holds actual interrupt status byte from MPU
+  uint8_t devStatus;      // return status after each device operation (0 = success, !0 = error)
+  uint8_t mpuIntStatus;   // holds actual interrupt status byte from MPU
 
   Serial.println(F("Initializing I2C devices..."));
   mpu.initialize();
@@ -76,12 +88,12 @@ void initMPU() {
   Serial.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
 
   Serial.println(F("\nPausing 2 seconds before calibrating."));
-  display.drawString(32, 28, "Pausing...");
+  display.println(F("Pausing..."));
   display.display();
   delay(2000);
 
   // load and configure the DMP
-  display.drawString(32, 42, "Calibrating.");
+  display.println(F("Setting..."));
   Serial.println(F("Initializing DMP..."));
   display.display();
   devStatus = mpu.dmpInitialize();
@@ -93,8 +105,7 @@ void initMPU() {
   mpu.setZAccelOffset(1788); // 1688 factory default for my test chip
 
   // make sure it worked (returns 0 if so)
-  if (devStatus == 0)
-  {
+  if (devStatus == 0) {
     // Calibration Time: generate offsets and calibrate our MPU6050
     mpu.CalibrateAccel(6);
     mpu.CalibrateGyro(6);
@@ -117,8 +128,7 @@ void initMPU() {
     // get expected DMP packet size for later comparison
     packetSize = mpu.dmpGetFIFOPacketSize();
   }
-  else
-  {
+  else {
     // ERROR!
     // 1 = initial memory load failed
     // 2 = DMP configuration updates failed
@@ -173,16 +183,17 @@ void displayYawPitchRoll(uint8_t* fifoBuffer) {
   Serial.println(ypr[2] * 180 / M_PI);
 
   char buffer[32];
-  display.clear();
-  display.drawString(32, 14, "Yaw:");
+  display.clearDisplay();
+  display.setCursor(0,0);
+  display.print("Yaw:   ");
   itoa(ypr[0] * 180 / M_PI, buffer, 10);
-  display.drawString(64, 14, buffer);
-  display.drawString(32, 28, "Pitch:");
+  display.println(buffer);
+  display.print("Pitch: ");
   itoa(ypr[1] * 180 / M_PI, buffer, 10);
-  display.drawString(64, 28, buffer);
-  display.drawString(32, 42, "Roll:");
+  display.println(buffer);
+  display.print("Roll:  ");
   itoa(ypr[2] * 180 / M_PI, buffer, 10);
-  display.drawString(64, 42, buffer);
+  display.println(buffer);
   display.display();
 }
 
@@ -301,9 +312,10 @@ void displayModeError() {
   char buffer[32];
 
   itoa(displayMode, buffer, 10);
-  display.clear();
-  display.drawString(32, 14, "Mode error:");
-  display.drawString(32, 28, buffer);
+  display.clearDisplay();
+  display.setCursor(0,0);
+  display.println("Mode error:");
+  display.println(buffer);
   display.display();
 }
 
