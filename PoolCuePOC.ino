@@ -185,15 +185,18 @@ void displayYawPitchRoll(uint8_t* fifoBuffer) {
   char buffer[32];
   display.clearDisplay();
   display.setCursor(0,0);
-  display.print("Yaw:   ");
-  itoa(ypr[0] * 180 / M_PI, buffer, 10);
-  display.println(buffer);
-  display.print("Pitch: ");
-  itoa(ypr[1] * 180 / M_PI, buffer, 10);
-  display.println(buffer);
-  display.print("Roll:  ");
-  itoa(ypr[2] * 180 / M_PI, buffer, 10);
-  display.println(buffer);
+//  display.print("Yaw:   ");
+//  itoa(ypr[0] * 180 / M_PI, buffer, 10);
+//  display.println(buffer);
+//  display.print("Pitch: ");
+//  itoa(ypr[1] * 180 / M_PI, buffer, 10);
+//  display.println(buffer);
+//  display.print("Roll:  ");
+//  itoa(ypr[2] * 180 / M_PI, buffer, 10);
+//  display.println(buffer);
+  display.printf("Yaw %6.1f\n", ypr[0] * 180.0 / M_PI);
+  display.printf("Pit %6.1f\n", ypr[1] * 180.0 / M_PI);
+  display.printf("Rol %6.1f\n", ypr[2] * 180.0 / M_PI);
   display.display();
 }
 
