@@ -30,14 +30,18 @@
 #include "Adafruit_SSD1306.h"
 #include "MPU6050_6Axis_MotionApps20.h" // includes MPU6050.h
 #include <ESP8266WiFi.h>
-#include <ESP8266mDNS.h>
+#include <DNSServer.h>
 #include <ESP8266WebServer.h>
+#include <WebSocketsServer.h>           // From https://github.com/Links2004/arduinoWebSockets
 
 
 #define     OLED_RESET        -1
 #define     INTERRUPT_PIN     D8
 #define     BUTTON_A          D3
 #define     BUTTON_B          D4
+#define     DNS_PORT          53
+#define     HTTP_PORT         80
+#define     WEB_SOCKET_PORT   81
 #define     DISPLAY_MODE_YPR  0
 #define     DISPLAY_MODE_QUAT 1
 #define     DISPLAY_MODE_EUL  2
@@ -48,9 +52,18 @@
 
 MPU6050           mpu(0x68);                          // Custom proto board w/ interrupt on D8
 Adafruit_SSD1306  display(OLED_RESET);                // Wemos OLED shield
-ESP8266WebServer  server(80);
+ESP8266WebServer  server(HTTP_PORT);
+WebSocketsServer webSocket(WEB_SOCKET_PORT);
+DNSServer         dnsServer;
 
-const char        APP_NAME[] PROGMEM  = "PoolCuePOC"; // To use: FPSTR(APP_NAME)
+const char        APP_NAME[]      PROGMEM = "PoolCuePOC"; // To use: FPSTR(APP_NAME)
+const char        HTTP_HEAD[]     PROGMEM = "<!DOCTYPE html><html lang=\"en\"><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, user-scalable=no\"/><title>{v}</title>";
+const char        HTTP_STYLE[]    PROGMEM = "<style></style>";
+const char        HTTP_SCRIPT[]   PROGMEM = "<script></script>";
+const char        HTTP_HEAD_END[] PROGMEM = "</head><body><div style='text-align:left;display:inline-block;min-width:260px;'>";
+const char        HTTP_END[]      PROGMEM = "</div></body></html>";
+
+
 bool              dmpReady            = false;        // set true if DMP init was successful
 uint16_t          fifoCount           = 0;            // count of all bytes currently in FIFO
 uint16_t          packetSize          = 42;           // expected DMP packet size (default is 42 bytes)
@@ -145,15 +158,84 @@ void initMPU() {
 }
 
 
-void webServerRoot() {
-  Serial.println("*** Web Server: /");
-  server.send(200, "text/plain", "Hello world!");
+// Utility routine from WiFiManager
+//
+boolean isIp(String str) {
+  for (size_t i = 0; i < str.length(); i++) {
+    int c = str.charAt(i);
+    if (c != '.' && (c < '0' || c > '9')) {
+      return false;
+    }
+  }
+  return true;
 }
 
 
+//  Redirect to captive portal if we got a request for another domain.
+// Return true in that case so the page handler do not try to handle the request again.
+//
+boolean captivePortal() {
+  if (!isIp(server.hostHeader()) ) {
+    Serial.printf(F("Request redirected to captive portal (%s)\n"), server.hostHeader().c_str());
+    server.sendHeader(F("Location"), String("http://") + WiFi.softAPIP().toString(), true);
+    server.send ( 302, "text/plain", ""); // Empty content inhibits Content-length header so we have to close the socket ourselves.
+    server.client().stop(); // Stop is needed because we sent no content length
+    return true;
+  }
+  return false;
+}
+
+
+//  Web server request for the root page
+//  The captive portal approach requires that we build the entire page in place.
+//
+void webServerRoot() {
+  if (captivePortal()) { return; }  // If captive portal redirect instead of displaying the page.
+  Serial.println("*** Web Server: /");
+
+  String page = FPSTR(HTTP_HEAD);
+  page.replace("{v}", FPSTR(APP_NAME));
+  page += FPSTR(HTTP_SCRIPT);
+  page += FPSTR(HTTP_STYLE);
+  page += FPSTR(HTTP_HEAD_END);
+  page += String(F("<h1>"));
+  page += FPSTR(APP_NAME);
+  page += String(F("</h1>"));
+  page += FPSTR(HTTP_END);
+
+  server.sendHeader("Content-Length", String(page.length()));
+  server.send(200, "text/html", page);
+}
+
+
+//  Catch-all for unknown webserver requests
+//
 void webServerNotFound() {
-  Serial.println("*** Web Server: 404");
+  if (captivePortal()) { return; }  // If caprive portal redirect instead of displaying the page.
+  Serial.println("*** Web Server: 404.");
   server.send(404, "text/plain", "404: Not found");
+}
+
+
+//  Handler for incoming WebSocket events
+//
+void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t lenght) {
+  IPAddress ip;
+  
+  switch (type) {
+    case WStype_DISCONNECTED:   // if the websocket is disconnected
+      Serial.printf(F("[%u] Disconnected!\n"), num);
+      break;
+      
+    case WStype_CONNECTED:      // if a new websocket connection is established
+      ip = webSocket.remoteIP(num);
+      Serial.printf(F("[%u] Connected from %d.%d.%d.%d url: %s\n"), num, ip[0], ip[1], ip[2], ip[3], payload);
+      break;
+      
+    case WStype_TEXT:           // if new text data is received
+      Serial.printf(F("[%u] get Text: %s\n"), num, payload);
+      break;
+  }
 }
 
 
@@ -167,11 +249,8 @@ bool initWiFi() {
     Serial.print(F("IP address: "));
     Serial.println(WiFi.softAPIP());
 
-    // Start the mDNS responder
-    if (!MDNS.begin(FPSTR(APP_NAME))) {
-      Serial.println(F("Error setting up mDNS responder."));
-    }
-    Serial.println(F("mDNS responder started."));
+    // Start the DNS server and create Captive Portal using '*'
+    dnsServer.start(DNS_PORT, F("*"), WiFi.softAPIP());
 
     // Start the web server
     server.on(F("/"), webServerRoot);
@@ -179,6 +258,11 @@ bool initWiFi() {
     server.begin();
     Serial.println(F("Web server started."));
 
+    // Start the WebSocket server
+    webSocket.begin();                          // start the websocket server
+    webSocket.onEvent(webSocketEvent);          // if there's an incomming websocket message, go to function 'webSocketEvent'
+    Serial.println(F("WebSocket server started."));
+    
     return true;
   }
   else {
@@ -205,6 +289,30 @@ void setup() {
   initDisplay();
   initMPU();
   initWiFi();
+}
+
+
+//  Send Y/P/R data to web socket
+//
+void sendWebSocketData(uint8_t* fifoBuffer) {
+  if(webSocket.connectedClients() > 0) {
+    Quaternion  q;        // [w, x, y, z]         quaternion container
+    VectorFloat gravity;  // [x, y, z]            gravity vector
+    float       ypr[3];   // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
+
+    mpu.dmpGetQuaternion(&q, fifoBuffer);
+    mpu.dmpGetGravity(&gravity, &q);
+    mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+  
+    String str = "{yaw:";
+    str += float(int(ypr[0] * 180.0 / M_PI * 10) / 10.0);
+    str += ";pitch:";
+    str += float(int(ypr[1] * 180.0 / M_PI * 10) / 10.0);
+    str += ";roll:";
+    str += float(int(ypr[2] * 180.0 / M_PI * 10) / 10.0);
+    str += ";}";
+    webSocket.broadcastTXT(str);
+  }
 }
 
 
@@ -442,7 +550,10 @@ void loop()
       fifoCount -= packetSize;
     }
 
-    server.handleClient(); 
+    webSocket.loop();
+    dnsServer.processNextRequest();
+    server.handleClient();
+    sendWebSocketData(fifoBuffer);
     
     switch(displayMode) {
       case DISPLAY_MODE_YPR:
