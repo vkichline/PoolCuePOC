@@ -31,6 +31,7 @@
 #include "MPU6050_6Axis_MotionApps20.h" // includes MPU6050.h
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
+#include <ESP8266WebServer.h>
 
 
 #define     OLED_RESET        -1
@@ -47,7 +48,7 @@
 
 MPU6050           mpu(0x68);                          // Custom proto board w/ interrupt on D8
 Adafruit_SSD1306  display(OLED_RESET);                // Wemos OLED shield
-
+ESP8266WebServer  server(80);
 
 const char        APP_NAME[] PROGMEM  = "PoolCuePOC"; // To use: FPSTR(APP_NAME)
 bool              dmpReady            = false;        // set true if DMP init was successful
@@ -144,10 +145,23 @@ void initMPU() {
 }
 
 
+void webServerRoot() {
+  Serial.println("*** Web Server: /");
+  server.send(200, "text/plain", "Hello world!");
+}
+
+
+void webServerNotFound() {
+  Serial.println("*** Web Server: 404");
+  server.send(404, "text/plain", "404: Not found");
+}
+
+
 //  Start WiFi and create an access point named for the program
 //
 bool initWiFi() {
   // Start the access point, no password
+  WiFi.mode(WIFI_AP);
   if(WiFi.softAP(FPSTR(APP_NAME))) {
     Serial.printf(F("Access Point \"%s\" started.\n"), FPSTR(APP_NAME));
     Serial.print(F("IP address: "));
@@ -158,6 +172,12 @@ bool initWiFi() {
       Serial.println(F("Error setting up mDNS responder."));
     }
     Serial.println(F("mDNS responder started."));
+
+    // Start the web server
+    server.on(F("/"), webServerRoot);
+    server.onNotFound(webServerNotFound);
+    server.begin();
+    Serial.println(F("Web server started."));
 
     return true;
   }
@@ -422,6 +442,8 @@ void loop()
       fifoCount -= packetSize;
     }
 
+    server.handleClient(); 
+    
     switch(displayMode) {
       case DISPLAY_MODE_YPR:
         displayYawPitchRoll(fifoBuffer);
