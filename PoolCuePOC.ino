@@ -25,11 +25,12 @@
 //OFFSETS    -1286,    -379,    1410,      40,     -64,      44
 
 #include <I2Cdev.h>
-#include <SPI.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include "Adafruit_SSD1306.h"
 #include "MPU6050_6Axis_MotionApps20.h" // includes MPU6050.h
+#include <ESP8266WiFi.h>
+#include <ESP8266mDNS.h>
 
 
 #define     OLED_RESET        -1
@@ -42,16 +43,18 @@
 #define     DISPLAY_MODE_REAL 3
 #define     DISPLAY_MODE_WOR  4
 #define     DISPLAY_MODE_TPT  5
-#define     DISPLAY_MAX_ROT   DISPLAY_MODE_WOR
+#define     DISPLAY_MAX_ROT   DISPLAY_MODE_WOR        // Rotate menu w/o including DISPLAY_MODE_TPT
+
+MPU6050           mpu(0x68);                          // Custom proto board w/ interrupt on D8
+Adafruit_SSD1306  display(OLED_RESET);                // Wemos OLED shield
 
 
-MPU6050           mpu(0x68);
-Adafruit_SSD1306  display(OLED_RESET);        // Wemos OLED shield
-bool              dmpReady          = false;  // set true if DMP init was successful
-uint16_t          fifoCount         = 0;      // count of all bytes currently in FIFO
-uint16_t          packetSize        = 42;     // expected DMP packet size (default is 42 bytes)
-int               displayMode       = DISPLAY_MODE_YPR;
-uint8_t           teapotPacket[14]  = {'$', 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0x00, 0x00, '\r', '\n'}; // packet structure for InvenSense teapot demo
+const char        APP_NAME[] PROGMEM  = "PoolCuePOC"; // To use: FPSTR(APP_NAME)
+bool              dmpReady            = false;        // set true if DMP init was successful
+uint16_t          fifoCount           = 0;            // count of all bytes currently in FIFO
+uint16_t          packetSize          = 42;           // expected DMP packet size (default is 42 bytes)
+int               displayMode         = DISPLAY_MODE_YPR;
+uint8_t           teapotPacket[14]    = {'$', 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0x00, 0x00, '\r', '\n'}; // packet structure for InvenSense teapot demo
 
 
 //  Interrupt Routine and status var
@@ -141,6 +144,30 @@ void initMPU() {
 }
 
 
+//  Start WiFi and create an access point named for the program
+//
+bool initWiFi() {
+  // Start the access point, no password
+  if(WiFi.softAP(FPSTR(APP_NAME))) {
+    Serial.printf(F("Access Point \"%s\" started.\n"), FPSTR(APP_NAME));
+    Serial.print(F("IP address: "));
+    Serial.println(WiFi.softAPIP());
+
+    // Start the mDNS responder
+    if (!MDNS.begin(FPSTR(APP_NAME))) {
+      Serial.println(F("Error setting up mDNS responder."));
+    }
+    Serial.println(F("mDNS responder started."));
+
+    return true;
+  }
+  else {
+    Serial.println(F("Access point initialization failed."));
+    return false;
+  }
+}
+
+
 // Setup routine, called onced by RTOS
 //
 void setup() {
@@ -149,7 +176,7 @@ void setup() {
 
   Serial.begin(115200);
   Serial.println();
-  Serial.println(F("Starting."));
+  Serial.printf(F("%s starting.\n"), FPSTR(APP_NAME));
 
   // join I2C bus (I2Cdev library doesn't do this automatically)
   Wire.begin();
@@ -157,6 +184,7 @@ void setup() {
 
   initDisplay();
   initMPU();
+  initWiFi();
 }
 
 
