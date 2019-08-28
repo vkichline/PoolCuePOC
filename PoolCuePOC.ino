@@ -66,19 +66,24 @@ DNSServer         dnsServer;
 //    setVal(ypr,'roll');
 //  };
 //
+//  h1 { text-align: center }
+//  p { margin-left: 4em; }
+//  span { margin-left: 1em; }
+//
 //  <body>
-//    <p><div id='yaw'></div></p>
-//    <p><div id='pitch'></div></p>
-//    <p><div id='roll'></div></p>
+//    <h1>Pool Cue</h1>
+//    <p>Y <span id='yaw' /></p>
+//    <p>P <span id='pitch' /></p>
+//    <p>R <span id='roll' /></p>
 //  </body>
+
 
 const char        APP_NAME[]      PROGMEM = "PoolCuePOC"; // To use: FPSTR(APP_NAME)
 const char        HTTP_HEAD[]     PROGMEM = "<!DOCTYPE html><html lang=\"en\"><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, user-scalable=no\"/><title>{v}</title>";
-const char        HTTP_STYLE[]    PROGMEM = "<style></style>";
-//const char        HTTP_SCRIPT[]   PROGMEM = "<script>var connection=new WebSocket('ws://192.168.4.1:81/',['arduino']);function setVal(ypr,x){document.getElementById(x).innerText=ypr[x];}connection.onmessage=function(e){var ypr=JSON.parse(e.data);setVal(ypr,'yaw');setVal(ypr,'pitch');setVal(ypr,'roll');};</script>";
-const char        HTTP_SCRIPT[]   PROGMEM = "<script>var connection=new WebSocket('ws://192.168.4.1:81/',['arduino']);connection.onmessage=function(e){document.getElementById('yaw').innerText=e.data;};</script>";
+const char        HTTP_STYLE[]    PROGMEM = "<style>h1{text-align:center}\np{margin-left:4em;}\nspan{margin-left:1em;}</style>";
+const char        HTTP_SCRIPT[]   PROGMEM = "<script>var connection=new WebSocket('ws://192.168.4.1:81/',['arduino']);function setVal(ypr,x){document.getElementById(x).innerText=ypr[x];}connection.onmessage=function(e){var ypr=JSON.parse(e.data);setVal(ypr,'yaw');setVal(ypr,'pitch');setVal(ypr,'roll');};</script>";
 const char        HTTP_HEAD_END[] PROGMEM = "</head>";
-const char        HTTP_BODY[]     PROGMEM = "<body><h1>Pool Cue</h1><p><div id='yaw'></div></p><p><div id='pitch'></div></p><p><div id='roll'></div></p></body>";
+const char        HTTP_BODY[]     PROGMEM = "<body><h1>Pool Cue</h1><p>Y <span id='yaw' /></p><p>P <span id='pitch' /></p><p>R <span id='roll'/></p></body>";
 const char        HTTP_END[]      PROGMEM = "</html>";
 
 
@@ -329,13 +334,13 @@ void sendWebSocketData(uint8_t* fifoBuffer) {
     mpu.dmpGetGravity(&gravity, &q);
     mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
   
-    String str = "{yaw:";
+    String str = "{\"yaw\":";
     str += float(int(ypr[0] * 180.0 / M_PI * 10) / 10.0);
-    str += ";pitch:";
+    str += ",\"pitch\":";
     str += float(int(ypr[1] * 180.0 / M_PI * 10) / 10.0);
-    str += ";roll:";
+    str += ",\"roll\":";
     str += float(int(ypr[2] * 180.0 / M_PI * 10) / 10.0);
-    str += ";}";
+    str += "}";
     webSocket.broadcastTXT(str);
   }
 }
