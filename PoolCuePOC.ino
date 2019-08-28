@@ -56,12 +56,30 @@ ESP8266WebServer  server(HTTP_PORT);
 WebSocketsServer webSocket(WEB_SOCKET_PORT);
 DNSServer         dnsServer;
 
+
+//  var connection = new WebSocket('ws://192.168.4.1:81/', ['arduino']);
+//  function setVal(ypr,x){document.getElementById(x).innerText = ypr[x];}
+//  connection.onmessage = function (e) {
+//    var ypr = JSON.parse(e.data);
+//    setVal(ypr,'yaw');
+//    setVal(ypr,'pitch');
+//    setVal(ypr,'roll');
+//  };
+//
+//  <body>
+//    <p><div id='yaw'></div></p>
+//    <p><div id='pitch'></div></p>
+//    <p><div id='roll'></div></p>
+//  </body>
+
 const char        APP_NAME[]      PROGMEM = "PoolCuePOC"; // To use: FPSTR(APP_NAME)
 const char        HTTP_HEAD[]     PROGMEM = "<!DOCTYPE html><html lang=\"en\"><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, user-scalable=no\"/><title>{v}</title>";
 const char        HTTP_STYLE[]    PROGMEM = "<style></style>";
-const char        HTTP_SCRIPT[]   PROGMEM = "<script></script>";
-const char        HTTP_HEAD_END[] PROGMEM = "</head><body><div style='text-align:left;display:inline-block;min-width:260px;'>";
-const char        HTTP_END[]      PROGMEM = "</div></body></html>";
+//const char        HTTP_SCRIPT[]   PROGMEM = "<script>var connection=new WebSocket('ws://192.168.4.1:81/',['arduino']);function setVal(ypr,x){document.getElementById(x).innerText=ypr[x];}connection.onmessage=function(e){var ypr=JSON.parse(e.data);setVal(ypr,'yaw');setVal(ypr,'pitch');setVal(ypr,'roll');};</script>";
+const char        HTTP_SCRIPT[]   PROGMEM = "<script>var connection=new WebSocket('ws://192.168.4.1:81/',['arduino']);connection.onmessage=function(e){document.getElementById('yaw').innerText=e.data;};</script>";
+const char        HTTP_HEAD_END[] PROGMEM = "</head>";
+const char        HTTP_BODY[]     PROGMEM = "<body><h1>Pool Cue</h1><p><div id='yaw'></div></p><p><div id='pitch'></div></p><p><div id='roll'></div></p></body>";
+const char        HTTP_END[]      PROGMEM = "</html>";
 
 
 bool              dmpReady            = false;        // set true if DMP init was successful
@@ -198,13 +216,12 @@ void webServerRoot() {
   page += FPSTR(HTTP_SCRIPT);
   page += FPSTR(HTTP_STYLE);
   page += FPSTR(HTTP_HEAD_END);
-  page += String(F("<h1>"));
-  page += FPSTR(APP_NAME);
-  page += String(F("</h1>"));
+  page += FPSTR(HTTP_BODY);
   page += FPSTR(HTTP_END);
 
   server.sendHeader("Content-Length", String(page.length()));
   server.send(200, "text/html", page);
+  //server.send(200, "text/plain", page);
 }
 
 
@@ -234,6 +251,14 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t lenght
       
     case WStype_TEXT:           // if new text data is received
       Serial.printf(F("[%u] get Text: %s\n"), num, payload);
+      break;
+
+    case WStype_PING:           // pong will be send automatically
+      Serial.printf(F("[WSc] get ping\n"));
+      break;
+      
+  case WStype_PONG:             // answer to a ping we send
+      Serial.printf(F("[WSc] get pong\n"));
       break;
   }
 }
